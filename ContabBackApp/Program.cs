@@ -12,6 +12,18 @@ new EnvLoader()
     .AddEnvFile("dev.env")
     .Load();
 
+// Configurar CORS para el frontend (Lovable)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "https://lovable.dev")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 // Configurar Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -64,7 +76,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseAuthentication(); // <--- AGREGAR ESTO ANTES DE AUTHORIZATION
+// Habilitar CORS (DEBE IR ANTES de Authentication/Authorization)
+app.UseCors("AllowFrontend");
+
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
