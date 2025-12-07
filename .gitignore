@@ -1,10 +1,38 @@
+# Build results
 bin/
 obj/
 /packages/
 riderModule.iml
 /_ReSharper.Caches/
 
+# Environment variables (NO SUBIR NUNCA)
 *.env
+dev.env
+.env
+.env.local
+.env.*.local
+
+# Configuration files with sensitive data
+appsettings.json
+appsettings.Development.json
+appsettings.*.json
+
+# IDE
 .idea/
 .vscode/
-*.json
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.db-shm
+*.db-wal

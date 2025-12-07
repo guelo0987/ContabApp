@@ -1,0 +1,6 @@
+@ContabBackApp_HostAddress = http://localhost:5160
+
+GET {{ContabBackApp_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
