@@ -26,6 +26,20 @@ public class TiposDocumentoController : ControllerBase
         return Ok(await _service.GetAllAsync());
     }
 
+    /// <summary>
+    /// Obtiene los tipos de documento filtrados por tipo de movimiento.
+    /// DB = Facturas/Notas de Débito (para Ventas)
+    /// CR = Recibos/Notas de Crédito (para Cobros)
+    /// </summary>
+    [HttpGet("por-movimiento/{tipoMovimiento}")]
+    public async Task<ActionResult<List<TipoDocumentoDto>>> GetByTipoMovimiento(string tipoMovimiento)
+    {
+        if (tipoMovimiento != "DB" && tipoMovimiento != "CR")
+            return BadRequest(new { error = "El tipo de movimiento debe ser 'DB' o 'CR'" });
+
+        return Ok(await _service.GetByTipoMovimientoAsync(tipoMovimiento));
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTipoDocumentoDto dto)
     {

@@ -36,6 +36,8 @@ public partial class MyDbContext : DbContext
 
     public virtual DbSet<Usuario> Usuarios { get; set; }
 
+    public virtual DbSet<ConfiguracionSistema> ConfiguracionSistema { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AsientosCabecera>(entity =>
@@ -125,11 +127,27 @@ public partial class MyDbContext : DbContext
             entity.ToTable("clientes");
 
             entity.HasIndex(e => e.Cedula, "clientes_cedula_key").IsUnique();
+            entity.HasIndex(e => e.Rnc, "idx_clientes_rnc").IsUnique();
 
             entity.Property(e => e.IdCliente).HasColumnName("id_cliente");
             entity.Property(e => e.Cedula)
                 .HasMaxLength(20)
                 .HasColumnName("cedula");
+            entity.Property(e => e.Rnc)
+                .HasMaxLength(15)
+                .HasColumnName("rnc");
+            entity.Property(e => e.TipoCliente)
+                .HasMaxLength(20)
+                .HasDefaultValueSql("'Persona'::character varying")
+                .HasColumnName("tipo_cliente");
+            entity.Property(e => e.Telefono)
+                .HasMaxLength(20)
+                .HasColumnName("telefono");
+            entity.Property(e => e.Email)
+                .HasMaxLength(100)
+                .HasColumnName("email");
+            entity.Property(e => e.Direccion)
+                .HasColumnName("direccion");
             entity.Property(e => e.Estado)
                 .HasMaxLength(20)
                 .HasDefaultValueSql("'Activo'::character varying")
@@ -150,8 +168,12 @@ public partial class MyDbContext : DbContext
             entity.ToTable("cuentas_contables");
 
             entity.HasIndex(e => e.IdCuentaPadre, "idx_cuentas_padre");
+            entity.HasIndex(e => e.Codigo, "idx_cuentas_codigo").IsUnique();
 
             entity.Property(e => e.IdCuentaContable).HasColumnName("id_cuenta_contable");
+            entity.Property(e => e.Codigo)
+                .HasMaxLength(20)
+                .HasColumnName("codigo");
             entity.Property(e => e.Balance)
                 .HasPrecision(18, 2)
                 .HasDefaultValueSql("0.00")
@@ -227,6 +249,18 @@ public partial class MyDbContext : DbContext
                 .HasDefaultValueSql("'Activo'::character varying")
                 .HasColumnName("estado");
             entity.Property(e => e.IdCuentaContable).HasColumnName("id_cuenta_contable");
+            entity.Property(e => e.TipoMovimientoEsperado)
+                .HasMaxLength(2)
+                .IsFixedLength()
+                .HasDefaultValueSql("'DB'::bpchar")
+                .HasColumnName("tipo_movimiento_esperado");
+            entity.Property(e => e.AplicaItbis)
+                .HasDefaultValue(true)
+                .HasColumnName("aplica_itbis");
+            entity.Property(e => e.TasaItbis)
+                .HasPrecision(5, 2)
+                .HasDefaultValueSql("18.00")
+                .HasColumnName("tasa_itbis");
 
             entity.HasOne(d => d.IdCuentaContableNavigation).WithMany(p => p.TiposDocumentos)
                 .HasForeignKey(d => d.IdCuentaContable)
@@ -300,6 +334,29 @@ public partial class MyDbContext : DbContext
             entity.HasOne(d => d.Auxiliar).WithMany()
                 .HasForeignKey(d => d.IdAuxiliar)
                 .HasConstraintName("usuarios_id_auxiliar_fkey");
+        });
+
+        modelBuilder.Entity<ConfiguracionSistema>(entity =>
+        {
+            entity.HasKey(e => e.IdConfiguracion).HasName("configuracion_sistema_pkey");
+
+            entity.ToTable("configuracion_sistema");
+
+            entity.HasIndex(e => e.Clave, "configuracion_sistema_clave_key").IsUnique();
+
+            entity.Property(e => e.IdConfiguracion).HasColumnName("id_configuracion");
+            entity.Property(e => e.Clave)
+                .HasMaxLength(50)
+                .HasColumnName("clave");
+            entity.Property(e => e.Valor)
+                .HasMaxLength(255)
+                .HasColumnName("valor");
+            entity.Property(e => e.Descripcion)
+                .HasMaxLength(255)
+                .HasColumnName("descripcion");
+            entity.Property(e => e.FechaModificacion)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnName("fecha_modificacion");
         });
 
         OnModelCreatingPartial(modelBuilder);

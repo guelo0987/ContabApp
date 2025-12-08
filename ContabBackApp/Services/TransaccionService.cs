@@ -13,21 +13,48 @@ public interface ITransaccionService
     /// <param name="dto">Datos de la venta o cobro</param>
     /// <param name="idUsuarioAuxiliar">ID del sistema que llama (ej: 5 para CxC)</param>
     Task<TransaccionResponseDto> RegistrarTransaccionAsync(RegistrarTransaccionDto dto, int idUsuarioAuxiliar);
+
+    /// <summary>
+    /// Obtiene el saldo actual del cliente (cuánto debe)
+    /// </summary>
+    Task<SaldoClienteDto> ObtenerSaldoClienteAsync(int idCliente);
+
+    /// <summary>
+    /// Obtiene el historial de transacciones de un cliente
+    /// </summary>
+    Task<List<TransaccionHistorialDto>> ObtenerHistorialClienteAsync(int idCliente);
 }
 
 public class TransaccionService : ITransaccionService
 {
     private readonly MyDbContext _context;
 
-    // --- CONSTANTES DE CUENTAS (Basadas en 'Parametrizacion.csv') ---
-    // En un sistema real, esto podría venir de una tabla de configuración global.
-    private const int CUENTA_INGRESOS_VENTA = 13; // ID 13: Ingresos x Ventas
-    private const int CUENTA_CAJA_GENERAL = 3;    // ID 3: Caja General
-    private const int CUENTA_ITBIS_POR_PAGAR = 4; // ID 4: ITBIS por Pagar
-
     public TransaccionService(MyDbContext context)
     {
         _context = context;
+    }
+
+    // Obtener configuración de BD (con caché en memoria para no consultar cada vez)
+    private async Task<int> ObtenerConfiguracionInt(string clave)
+    {
+        var config = await _context.ConfiguracionSistema
+            .FirstOrDefaultAsync(c => c.Clave == clave);
+        
+        if (config == null)
+            throw new InvalidOperationException($"Configuración '{clave}' no encontrada. Ejecute el script de inicialización.");
+        
+        return int.Parse(config.Valor);
+    }
+
+    private async Task<decimal> ObtenerConfiguracionDecimal(string clave)
+    {
+        var config = await _context.ConfiguracionSistema
+            .FirstOrDefaultAsync(c => c.Clave == clave);
+        
+        if (config == null)
+            throw new InvalidOperationException($"Configuración '{clave}' no encontrada.");
+        
+        return decimal.Parse(config.Valor);
     }
 
     public async Task<TransaccionResponseDto> RegistrarTransaccionAsync(RegistrarTransaccionDto dto, int idUsuarioAuxiliar)
@@ -43,22 +70,23 @@ public class TransaccionService : ITransaccionService
         if (cliente.Estado != "Activo")
             throw new InvalidOperationException("El cliente está inactivo y no puede operar.");
 
-        // 1.2 Validar Tipo de Documento (Traemos la configuración contable)
-        var tipoDoc = await _context.TiposDocumentos.FindAsync(dto.IdTipoDocumento);
+        // 1.2 Validar Tipo de Documento y su Configuración Contable
+        var tipoDoc = await _context.TiposDocumentos
+            .Include(td => td.IdCuentaContableNavigation)
+            .ThenInclude(cc => cc.IdTipoCuentaNavigation)
+            .FirstOrDefaultAsync(td => td.IdTipoDocumento == dto.IdTipoDocumento);
+
         if (tipoDoc == null)
             throw new KeyNotFoundException($"El tipo de documento {dto.IdTipoDocumento} no existe.");
 
-        // 1.3 Validar Límite de Crédito (Solo para Venta/Deuda "DB")
-        if (dto.TipoMovimiento == "DB")
-        {
-            decimal saldoActual = await CalcularSaldoCliente(dto.IdCliente);
-            decimal nuevoSaldo = saldoActual + dto.Monto;
-            if (nuevoSaldo > cliente.LimiteCredito)
-            {
-                throw new InvalidOperationException(
-                    $"Crédito excedido. Límite: {cliente.LimiteCredito:C}, Saldo Actual: {saldoActual:C}, Intento: {dto.Monto:C}");
-            }
-        }
+        if (tipoDoc.IdCuentaContableNavigation == null)
+            throw new InvalidOperationException($"El tipo de documento '{tipoDoc.Descripcion}' no tiene una cuenta contable configurada. Contacte al contador.");
+
+        // =================================================================
+        // AUDITORIA CONTABLE INTELIGENTE (MODO PROFESOR 🎓)
+        // =================================================================
+        await ValidarReglasContables(dto, tipoDoc, cliente);
+
 
         // =================================================================
         // PASO 2: EJECUCIÓN TRANSACCIONAL (Atomicidad)
@@ -88,60 +116,67 @@ public class TransaccionService : ITransaccionService
             // -----------------------------------------------------------
             var detalles = new List<AsientosDetalle>();
 
+            // Obtener configuración de cuentas desde BD
+            int cuentaIngresosVenta = await ObtenerConfiguracionInt("CUENTA_INGRESOS_VENTA");
+            int cuentaCajaGeneral = await ObtenerConfiguracionInt("CUENTA_CAJA_GENERAL");
+            int cuentaItbisPorPagar = await ObtenerConfiguracionInt("CUENTA_ITBIS_POR_PAGAR");
+
             // LÓGICA DE CONTABILIZACIÓN SEGÚN MOVIMIENTO
             if (dto.TipoMovimiento == "DB") // FACTURA DE VENTA
             {
-                // Definir Tasa de Impuesto (Podría venir de config o DTO, asumimos 18%)
-                decimal tasaItbis = 0.18m;
+                // Usar la tasa de ITBIS del tipo de documento
+                decimal tasaItbis = tipoDoc.AplicaItbis ? (tipoDoc.TasaItbis / 100m) : 0m;
                 
                 // Matemática financiera: Desglosar el monto bruto
-                // Si Monto es 118, Base es 100 e Impuesto es 18.
-                decimal montoBase = Math.Round(dto.Monto / (1 + tasaItbis), 2);
+                decimal montoBase = tasaItbis > 0 ? Math.Round(dto.Monto / (1 + tasaItbis), 2) : dto.Monto;
                 decimal montoItbis = dto.Monto - montoBase;
 
-                // 1. DÉBITO: CxC Clientes (El cliente me debe TODO: 118)
+                // 1. DÉBITO: CxC Clientes (El cliente me debe TODO)
                 detalles.Add(new AsientosDetalle
                 {
                     IdAsiento = nuevoAsiento.IdAsiento,
-                    IdCuentaContable = tipoDoc.IdCuentaContable ?? throw new InvalidOperationException("El tipo de documento no tiene cuenta contable configurada."),
+                    IdCuentaContable = tipoDoc.IdCuentaContable.Value,
                     TipoMovimiento = "DB",
                     Monto = dto.Monto
                 });
 
-                // 2. CRÉDITO: Ingreso por Venta (Lo que realmente gané: 100)
+                // 2. CRÉDITO: Ingreso por Venta (Lo que realmente gané)
                 detalles.Add(new AsientosDetalle
                 {
                     IdAsiento = nuevoAsiento.IdAsiento,
-                    IdCuentaContable = CUENTA_INGRESOS_VENTA,
+                    IdCuentaContable = cuentaIngresosVenta,
                     TipoMovimiento = "CR",
                     Monto = montoBase
                 });
 
-                // 3. CRÉDITO: ITBIS por Pagar (Lo que debo al gobierno: 18)
-                detalles.Add(new AsientosDetalle
+                // 3. CRÉDITO: ITBIS por Pagar (Solo si aplica)
+                if (montoItbis > 0)
                 {
-                    IdAsiento = nuevoAsiento.IdAsiento,
-                    IdCuentaContable = CUENTA_ITBIS_POR_PAGAR,
-                    TipoMovimiento = "CR",
-                    Monto = montoItbis
-                });
+                    detalles.Add(new AsientosDetalle
+                    {
+                        IdAsiento = nuevoAsiento.IdAsiento,
+                        IdCuentaContable = cuentaItbisPorPagar,
+                        TipoMovimiento = "CR",
+                        Monto = montoItbis
+                    });
+                }
             }
             else // "CR" -> COBRO / RECIBO DE INGRESO
             {
-                // Aquí NO hay desglose de ITBIS, solo movimiento de dinero.
-                // Entra dinero al Banco (DB) y baja la deuda del Cliente (CR).
+                // 1. DÉBITO: Caja/Bancos (Entra dinero)
                 detalles.Add(new AsientosDetalle
                 {
                     IdAsiento = nuevoAsiento.IdAsiento,
-                    IdCuentaContable = CUENTA_CAJA_GENERAL,
+                    IdCuentaContable = cuentaCajaGeneral,
                     TipoMovimiento = "DB",
                     Monto = dto.Monto
                 });
 
+                // 2. CRÉDITO: CxC Clientes (Disminuye la deuda)
                 detalles.Add(new AsientosDetalle
                 {
                     IdAsiento = nuevoAsiento.IdAsiento,
-                    IdCuentaContable = tipoDoc.IdCuentaContable ?? throw new InvalidOperationException("El tipo de documento no tiene cuenta contable configurada."),
+                    IdCuentaContable = tipoDoc.IdCuentaContable.Value,
                     TipoMovimiento = "CR",
                     Monto = dto.Monto
                 });
@@ -191,6 +226,72 @@ public class TransaccionService : ITransaccionService
         }
     }
 
+    // =================================================================
+    // MÉTODOS DE AUDITORÍA Y VALIDACIÓN (EL PROFESOR)
+    // =================================================================
+    
+    private async Task ValidarReglasContables(RegistrarTransaccionDto dto, TiposDocumento tipoDoc, Cliente cliente)
+    {
+        // 1. REGLA DE NATURALEZA DE CUENTA
+        // Verificamos que la cuenta configurada en el documento tenga sentido para la operación.
+        // Para transacciones de Clientes, la cuenta debe ser de origen DEUDOR (DB) -> Activo.
+        var cuentaConfigurada = tipoDoc.IdCuentaContableNavigation;
+        var origenCuenta = cuentaConfigurada.IdTipoCuentaNavigation?.Origen; // "DB" o "CR"
+
+        if (origenCuenta != "DB")
+        {
+            throw new InvalidOperationException(
+                $"Error Contable: El documento '{tipoDoc.Descripcion}' está vinculado a la cuenta '{cuentaConfigurada.Descripcion}' que es de origen ACREEDOR (CR). " +
+                $"Las cuentas para clientes/ventas deben ser de origen DEUDOR (DB) (Activos).");
+        }
+
+        // 2. REGLA DE COHERENCIA DOCUMENTAL
+        // El tipo de movimiento debe coincidir con lo configurado en el tipo de documento
+        var movimientoEsperado = tipoDoc.TipoMovimientoEsperado ?? "DB";
+        
+        if (dto.TipoMovimiento != movimientoEsperado)
+        {
+            string tipoOperacion = movimientoEsperado == "DB" ? "Venta (Débito)" : "Cobro (Crédito)";
+            string tipoEnviado = dto.TipoMovimiento == "DB" ? "Venta (Débito)" : "Cobro (Crédito)";
+            
+            throw new InvalidOperationException(
+                $"Incoherencia: El documento '{tipoDoc.Descripcion}' está configurado para {tipoOperacion}, " +
+                $"pero estás intentando usarlo como {tipoEnviado}.");
+        }
+
+        // 3. REGLA DE INTEGRIDAD DE SALDOS
+        decimal saldoActual = await CalcularSaldoCliente(dto.IdCliente);
+        decimal nuevoSaldo;
+
+        if (dto.TipoMovimiento == "DB")
+        {
+            // Aumenta la deuda
+            nuevoSaldo = saldoActual + dto.Monto;
+            
+            // Validar Límite de Crédito
+            if (nuevoSaldo > cliente.LimiteCredito)
+            {
+                throw new InvalidOperationException(
+                    $"Riesgo Financiero: La operación excede el límite de crédito del cliente. " +
+                    $"Límite: {cliente.LimiteCredito:C}, Saldo Actual: {saldoActual:C}, Saldo proyectado: {nuevoSaldo:C}");
+            }
+        }
+        else // "CR"
+        {
+            // Disminuye la deuda
+            nuevoSaldo = saldoActual - dto.Monto;
+
+            // Validar Saldo Negativo (No puedes cobrar más de lo que te deben)
+            // Nota: En algunos negocios se permiten anticipos, pero por defecto lo bloqueamos para enseñar orden.
+            if (nuevoSaldo < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Error de Lógica: El cobro de {dto.Monto:C} excede la deuda actual del cliente ({saldoActual:C}). " +
+                    $"No se permiten saldos negativos en Cuentas por Cobrar sin autorización de anticipo.");
+            }
+        }
+    }
+
     // Método auxiliar para saber cuánto debe el cliente hoy
     private async Task<decimal> CalcularSaldoCliente(int idCliente)
     {
@@ -202,5 +303,73 @@ public class TransaccionService : ITransaccionService
         decimal creditos = movimientos.Where(t => t.TipoMovimiento == "CR").Sum(t => t.Monto);
 
         return debitos - creditos;
+    }
+
+    // =================================================================
+    // CONSULTAS PÚBLICAS
+    // =================================================================
+
+    public async Task<SaldoClienteDto> ObtenerSaldoClienteAsync(int idCliente)
+    {
+        var cliente = await _context.Clientes.FindAsync(idCliente);
+        if (cliente == null)
+            throw new KeyNotFoundException($"Cliente con ID {idCliente} no encontrado.");
+
+        var movimientos = await _context.TransaccionesCxcs
+            .Where(t => t.IdCliente == idCliente)
+            .ToListAsync();
+
+        decimal debitos = movimientos.Where(t => t.TipoMovimiento == "DB").Sum(t => t.Monto);
+        decimal creditos = movimientos.Where(t => t.TipoMovimiento == "CR").Sum(t => t.Monto);
+        decimal saldoActual = debitos - creditos;
+
+        return new SaldoClienteDto
+        {
+            IdCliente = idCliente,
+            NombreCliente = cliente.Nombre,
+            SaldoActual = saldoActual,
+            LimiteCredito = cliente.LimiteCredito,
+            CreditoDisponible = cliente.LimiteCredito - saldoActual,
+            CantidadFacturas = movimientos.Count(t => t.TipoMovimiento == "DB"),
+            CantidadPagos = movimientos.Count(t => t.TipoMovimiento == "CR")
+        };
+    }
+
+    public async Task<List<TransaccionHistorialDto>> ObtenerHistorialClienteAsync(int idCliente)
+    {
+        var cliente = await _context.Clientes.FindAsync(idCliente);
+        if (cliente == null)
+            throw new KeyNotFoundException($"Cliente con ID {idCliente} no encontrado.");
+
+        var movimientos = await _context.TransaccionesCxcs
+            .Include(t => t.IdTipoDocumentoNavigation)
+            .Where(t => t.IdCliente == idCliente)
+            .OrderBy(t => t.FechaTransaccion)
+            .ThenBy(t => t.IdTransaccion)
+            .ToListAsync();
+
+        var historial = new List<TransaccionHistorialDto>();
+        decimal saldoAcumulado = 0;
+
+        foreach (var mov in movimientos)
+        {
+            if (mov.TipoMovimiento == "DB")
+                saldoAcumulado += mov.Monto;
+            else
+                saldoAcumulado -= mov.Monto;
+
+            historial.Add(new TransaccionHistorialDto
+            {
+                IdTransaccion = mov.IdTransaccion,
+                TipoMovimiento = mov.TipoMovimiento ?? "N/A",
+                TipoDocumento = mov.IdTipoDocumentoNavigation?.Descripcion ?? "N/A",
+                NumeroDocumento = mov.NumeroDocumento,
+                Fecha = mov.FechaTransaccion,
+                Monto = mov.Monto,
+                SaldoAcumulado = saldoAcumulado
+            });
+        }
+
+        return historial;
     }
 }

@@ -55,4 +55,38 @@ public class TransaccionesController : ControllerBase
             return StatusCode(500, new { error = "Ocurrió un error interno procesando la transacción." });
         }
     }
+
+    /// <summary>
+    /// Obtiene el saldo actual del cliente (cuánto debe)
+    /// </summary>
+    [HttpGet("saldo/{idCliente}")]
+    public async Task<IActionResult> ObtenerSaldo(int idCliente)
+    {
+        try
+        {
+            var saldo = await _service.ObtenerSaldoClienteAsync(idCliente);
+            return Ok(saldo);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Obtiene el historial de transacciones de un cliente
+    /// </summary>
+    [HttpGet("historial/{idCliente}")]
+    public async Task<IActionResult> ObtenerHistorial(int idCliente)
+    {
+        try
+        {
+            var historial = await _service.ObtenerHistorialClienteAsync(idCliente);
+            return Ok(historial);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
 }

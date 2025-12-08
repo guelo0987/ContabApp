@@ -9,6 +9,7 @@ namespace ContabBackApp.Services;
 public interface ITipoDocumentoService
 {
     Task<List<TipoDocumentoDto>> GetAllAsync();
+    Task<List<TipoDocumentoDto>> GetByTipoMovimientoAsync(string tipoMovimiento);
     Task<TipoDocumentoDto> CreateAsync(CreateTipoDocumentoDto dto);
 }
 
@@ -24,18 +25,45 @@ public class TipoDocumentoService : ITipoDocumentoService
 
     public async Task<List<TipoDocumentoDto>> GetAllAsync()
     {
-        return await _context.TiposDocumentos
-            .Select(t => new TipoDocumentoDto
-            {
-                IdTipoDocumento = t.IdTipoDocumento,
-                Descripcion = t.Descripcion,
-                IdCuentaContable = t.IdCuentaContable,
-                Estado = t.Estado
-            }).ToListAsync();
+        var tipos = await _context.TiposDocumentos
+            .Include(t => t.IdCuentaContableNavigation)
+            .Where(t => t.Estado == "Activo")
+            .ToListAsync();
+
+        return tipos.Select(t => MapToDto(t)).ToList();
+    }
+
+    public async Task<List<TipoDocumentoDto>> GetByTipoMovimientoAsync(string tipoMovimiento)
+    {
+        var tipos = await _context.TiposDocumentos
+            .Include(t => t.IdCuentaContableNavigation)
+            .Where(t => t.Estado == "Activo" && t.TipoMovimientoEsperado == tipoMovimiento)
+            .ToListAsync();
+
+        return tipos.Select(t => MapToDto(t)).ToList();
+    }
+
+    private TipoDocumentoDto MapToDto(TiposDocumento t)
+    {
+        return new TipoDocumentoDto
+        {
+            IdTipoDocumento = t.IdTipoDocumento,
+            Descripcion = t.Descripcion,
+            IdCuentaContable = t.IdCuentaContable,
+            NombreCuentaContable = t.IdCuentaContableNavigation?.Descripcion,
+            Estado = t.Estado,
+            TipoMovimientoEsperado = t.TipoMovimientoEsperado ?? "DB",
+            AplicaItbis = t.AplicaItbis,
+            TasaItbis = t.TasaItbis
+        };
     }
 
     public async Task<TipoDocumentoDto> CreateAsync(CreateTipoDocumentoDto dto)
     {
+        // Validar tipo de movimiento
+        if (dto.TipoMovimientoEsperado != "DB" && dto.TipoMovimientoEsperado != "CR")
+            throw new ArgumentException("El tipo de movimiento debe ser 'DB' o 'CR'");
+
         // Regla de Negocio: Validar que la cuenta contable sea válida para imputar
         var cuentaValida = await _context.CuentasContables
             .AnyAsync(c => c.IdCuentaContable == dto.IdCuentaContable && c.PermiteMovimiento == true);
@@ -49,18 +77,15 @@ public class TipoDocumentoService : ITipoDocumentoService
         {
             Descripcion = dto.Descripcion,
             IdCuentaContable = dto.IdCuentaContable,
+            TipoMovimientoEsperado = dto.TipoMovimientoEsperado,
+            AplicaItbis = dto.AplicaItbis,
+            TasaItbis = dto.TasaItbis,
             Estado = "Activo"
         };
 
         _context.TiposDocumentos.Add(nuevoTipo);
         await _context.SaveChangesAsync();
 
-        return new TipoDocumentoDto
-        {
-            IdTipoDocumento = nuevoTipo.IdTipoDocumento,
-            Descripcion = nuevoTipo.Descripcion,
-            IdCuentaContable = nuevoTipo.IdCuentaContable,
-            Estado = nuevoTipo.Estado
-        };
+        return MapToDto(nuevoTipo);
     }
 }

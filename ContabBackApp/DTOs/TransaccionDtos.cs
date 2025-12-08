@@ -31,3 +31,27 @@ public class TransaccionResponseDto
     public int IdAsientoGenerado { get; set; }
     public string Mensaje { get; set; } = null!;
 }
+
+// DTO para consultar saldo del cliente
+public class SaldoClienteDto
+{
+    public int IdCliente { get; set; }
+    public string NombreCliente { get; set; } = null!;
+    public decimal SaldoActual { get; set; }
+    public decimal LimiteCredito { get; set; }
+    public decimal CreditoDisponible { get; set; }
+    public int CantidadFacturas { get; set; }
+    public int CantidadPagos { get; set; }
+}
+
+// DTO para historial de transacciones
+public class TransaccionHistorialDto
+{
+    public int IdTransaccion { get; set; }
+    public string TipoMovimiento { get; set; } = null!;
+    public string TipoDocumento { get; set; } = null!;
+    public string NumeroDocumento { get; set; } = null!;
+    public DateOnly Fecha { get; set; }
+    public decimal Monto { get; set; }
+    public decimal SaldoAcumulado { get; set; } // Saldo después de esta transacción
+}

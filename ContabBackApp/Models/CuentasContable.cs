@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ContabBackApp.Models;
@@ -6,6 +6,11 @@ namespace ContabBackApp.Models;
 public partial class CuentasContable
 {
     public int IdCuentaContable { get; set; }
+
+    /// <summary>
+    /// Código contable jerárquico (ej: "1.1.01.001")
+    /// </summary>
+    public string? Codigo { get; set; }
 
     public string Descripcion { get; set; } = null!;
 
