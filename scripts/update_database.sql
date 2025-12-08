@@ -8,7 +8,7 @@
 INSERT INTO configuracion_sistema (clave, valor, descripcion) VALUES
 ('CUENTA_CAJA_GENERAL', '3', 'ID de la cuenta de Caja General'),
 ('CUENTA_INGRESOS_VENTA', '13', 'ID de la cuenta de Ingresos por Ventas'),
-('CUENTA_ITBIS_POR_PAGAR', '4', 'ID de la cuenta de ITBIS por Pagar'),
+('CUENTA_ITBIS_POR_PAGAR', '11', 'ID de la cuenta de ITBIS por Pagar'),
 ('TASA_ITBIS_DEFAULT', '18.00', 'Tasa de ITBIS por defecto (%)'),
 ('MONEDA_DEFAULT', '1', 'ID de la moneda por defecto (DOP)')
 ON CONFLICT (clave) DO NOTHING;

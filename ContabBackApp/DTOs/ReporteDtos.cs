@@ -36,3 +36,25 @@ public class DetalleAsientoDto
     public decimal Debito { get; set; }
     public decimal Credito { get; set; }
 }
+
+// --- REPORTE 3: DASHBOARD (RESUMEN GENERAL) ---
+public class DashboardDto
+{
+    public int TotalClientes { get; set; }
+    public int ClientesActivos { get; set; }
+    public decimal DebitosDelDia { get; set; }      // Facturas del día
+    public decimal CreditosDelDia { get; set; }      // Cobros del día
+    public decimal SaldoCxCTotal { get; set; }       // Total pendiente de cobrar
+    public int AsientosDelDia { get; set; }          // Cantidad de asientos hoy
+    public int TotalFacturas { get; set; }           // Total facturas en el sistema
+    public int TotalPagos { get; set; }              // Total pagos en el sistema
+    public List<ResumenClienteDto> TopClientesDeudores { get; set; } = new();
+}
+
+public class ResumenClienteDto
+{
+    public int IdCliente { get; set; }
+    public string Nombre { get; set; } = null!;
+    public decimal SaldoPendiente { get; set; }
+    public int CantidadFacturas { get; set; }
+}

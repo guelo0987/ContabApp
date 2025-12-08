@@ -39,4 +39,12 @@ public class ReportesController : ControllerBase
         var reporte = await _service.ObtenerDiarioGeneralAsync(desde, hasta);
         return Ok(reporte);
     }
+
+    // GET: api/v1/Reportes/dashboard
+    [HttpGet("dashboard")]
+    public async Task<ActionResult<DashboardDto>> GetDashboard()
+    {
+        var dashboard = await _service.ObtenerDashboardAsync();
+        return Ok(dashboard);
+    }
 }

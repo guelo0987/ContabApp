@@ -463,6 +463,45 @@ DELETE /api/v1/auxiliares/{id}
 
 ## 📈 9. Reportes
 
+### Dashboard (Métricas del Sistema)
+```http
+GET /api/v1/reportes/dashboard
+```
+
+**Response:**
+```json
+{
+  "totalClientes": 4,
+  "clientesActivos": 4,
+  "debitosDelDia": 5000.00,
+  "creditosDelDia": 1500.00,
+  "saldoCxCTotal": 6299.00,
+  "asientosDelDia": 2,
+  "totalFacturas": 3,
+  "totalPagos": 3,
+  "topClientesDeudores": [
+    {
+      "idCliente": 3,
+      "nombre": "María García",
+      "saldoPendiente": 3500.00,
+      "cantidadFacturas": 1
+    }
+  ]
+}
+```
+
+| Campo | Descripción |
+|-------|-------------|
+| `totalClientes` | Total de clientes en el sistema |
+| `clientesActivos` | Clientes con estado "Activo" |
+| `debitosDelDia` | Suma de facturas emitidas HOY |
+| `creditosDelDia` | Suma de cobros recibidos HOY |
+| `saldoCxCTotal` | Total pendiente por cobrar (todas las fechas) |
+| `asientosDelDia` | Cantidad de asientos contables generados HOY |
+| `totalFacturas` | Total histórico de facturas |
+| `totalPagos` | Total histórico de pagos |
+| `topClientesDeudores` | Top 5 clientes con mayor deuda |
+
 ### Estado de Cuenta del Cliente
 ```http
 GET /api/v1/reportes/estado-cuenta/{idCliente}
