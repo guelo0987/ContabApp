@@ -7,21 +7,13 @@ namespace ContabBackApp.Services;
 
 public interface ITransaccionService
 {
-    /// <summary>
-    /// Procesa una transacción de CxC y genera su asiento contable automáticamente.
-    /// </summary>
-    /// <param name="dto">Datos de la venta o cobro</param>
-    /// <param name="idUsuarioAuxiliar">ID del sistema que llama (ej: 5 para CxC)</param>
+
     Task<TransaccionResponseDto> RegistrarTransaccionAsync(RegistrarTransaccionDto dto, int idUsuarioAuxiliar);
 
-    /// <summary>
-    /// Obtiene el saldo actual del cliente (cuánto debe)
-    /// </summary>
+ 
     Task<SaldoClienteDto> ObtenerSaldoClienteAsync(int idCliente);
 
-    /// <summary>
-    /// Obtiene el historial de transacciones de un cliente
-    /// </summary>
+  
     Task<List<TransaccionHistorialDto>> ObtenerHistorialClienteAsync(int idCliente);
 }
 
@@ -34,7 +26,7 @@ public class TransaccionService : ITransaccionService
         _context = context;
     }
 
-    // Obtener configuración de BD (con caché en memoria para no consultar cada vez)
+    
     private async Task<int> ObtenerConfiguracionInt(string clave)
     {
         var config = await _context.ConfiguracionSistema
@@ -59,9 +51,7 @@ public class TransaccionService : ITransaccionService
 
     public async Task<TransaccionResponseDto> RegistrarTransaccionAsync(RegistrarTransaccionDto dto, int idUsuarioAuxiliar)
     {
-        // =================================================================
-        // PASO 1: VALIDACIONES PREVIAS (Fail Fast)
-        // =================================================================
+      
 
         // 1.1 Validar Cliente
         var cliente = await _context.Clientes.FindAsync(dto.IdCliente);
