@@ -11,19 +11,23 @@ using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-new EnvLoader()
-    .AddEnvFile("dev.env")
-    .Load();
+// 1. Cargar variables de entorno (Opcional, para local)
+try {
+    new EnvLoader().AddEnvFile("dev.env").Load();
+} catch (Exception) {
+    // Si no existe el archivo (ej. en Render), usará las variables del sistema
+    Console.WriteLine("No se encontró dev.env, usando variables de entorno del sistema.");
+}
 
-// Configurar CORS para el frontend (Lovable)
+// Configurar CORS para el frontend (Lovable y Producción)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:8080", "http://localhost:3000")
+        policy.AllowAnyOrigin() // Permitir cualquier origen (Frontend en Vercel, etc)
               .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowAnyHeader();
+              //.AllowCredentials(); // No compatible con AllowAnyOrigin
     });
 });
 
@@ -43,9 +47,9 @@ builder.Services.AddScoped<IReporteService, ReporteService>();
 builder.Services.AddScoped<ICatalogosService, CatalogosService>();
 
 // 2. Configurar JWT desde variables de entorno
-var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? throw new InvalidOperationException("JWT_KEY no configurada en dev.env");
-var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? throw new InvalidOperationException("JWT_ISSUER no configurada en dev.env");
-var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? throw new InvalidOperationException("JWT_AUDIENCE no configurada en dev.env");
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? throw new InvalidOperationException("JWT_KEY no configurada");
+var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? throw new InvalidOperationException("JWT_ISSUER no configurada");
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? throw new InvalidOperationException("JWT_AUDIENCE no configurada");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -67,15 +71,13 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Permitir Swagger en producción para que puedas probarlo
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ContabBack API v1");
-        c.RoutePrefix = string.Empty; // Swagger UI en la raíz (http://localhost:5160/)
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "ContabBack API v1");
+    c.RoutePrefix = string.Empty; // Swagger UI en la raíz
+});
 
 app.UseHttpsRedirection();
 
